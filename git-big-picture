@@ -800,7 +800,7 @@ class CommitGraph(object):
                 return digit_count
         return 40
 
-    def _generate_dot_file(self, sha_ones_on_labels, sha_one_digits=None):
+    def _generate_dot_file(self, sha_ones_on_labels, sha_one_digits=None, chronological_order=True):
         """ Generate graphviz input.
 
         Parameters
@@ -809,6 +809,8 @@ class CommitGraph(object):
             if True show sha1 (or minimal) on labels in addition to ref names
         sha_one_digits : int
             number of digits to use for showing sha1
+        chronological_order : boolean
+            if True generate graph in chronological order (from initial to latest commit)
 
         Returns
         -------
@@ -853,9 +855,16 @@ class CommitGraph(object):
                 dot_file_lines.append('\t"%(ref)s"[label="%(label)s"];' % {
                     'ref':sha_one,
                     'label':format_sha_one(sha_one)})
-        for child, self.parents in self.parents.items():
-            for p in self.parents:
-                dot_file_lines.append('\t"%(source)s" -> "%(target)s";' % {'source':child, 'target':p})
+
+        if (chronological_order):
+            for parent, self.children in self.children.items():
+                for c in self.children:
+                    dot_file_lines.append('\t"%(source)s" -> "%(target)s";' % {'source':parent, 'target':c})
+        else:
+            for child, self.parents in self.parents.items():
+                for p in self.parents:
+                    dot_file_lines.append('\t"%(source)s" -> "%(target)s";' % {'source':child, 'target':p})
+
         dot_file_lines.append('}')
         return dot_file_lines
 
