@@ -646,7 +646,7 @@ class Git(object):
 
         Returns
         -------
-        parents : dict mapping strings to sets of strings
+        parents : dict mapping strings to sets of tuples of (string, bool)
             mapping of children sha1s to parents sha1
         """
 
@@ -656,7 +656,9 @@ class Git(object):
             sha_ones = [e.group(0) for e in re.finditer(sha1_pattern, line)]
             count = len(sha_ones)
             if count > 1:
-                parents[sha_ones[0]] = set(sha_ones[1:])
+                parents[sha_ones[0]] = set([(sha_ones[1], True)])     # mark first parent
+                if count > 2:
+                    parents[sha_ones[0]] |= set((sha, False) for sha in sha_ones[2:])
             elif count == 1:
                 parents[sha_ones[0]] = set()
         return parents
@@ -730,7 +732,7 @@ class CommitGraph(object):
     def _calculate_child_mapping(self):
         """ Populate the self.children dict, using self.parents. """
         for sha_one, parent_sha_ones in self.parents.items():
-            for p in parent_sha_ones:
+            for p, fp in parent_sha_ones:
                 if p not in self.children:
                     self.children[p] = set()
                 self.children[p].add(sha_one)
@@ -741,12 +743,12 @@ class CommitGraph(object):
         """ Ensure that self.parents and self.children represent the same DAG.
         """
         for sha_one, pars in self.parents.items():
-            for p in pars:
+            for p, fp in pars:
                 for c in self.children[p]:
-                    assert(p in self.parents[c])
+                    assert((p, fp) in self.parents[c])
         for sha_one, chs in self.children.items():
             for c in chs:
-                for p in self.parents[c]:
+                for p, fp in self.parents[c]:
                     assert(c in self.children[p])
 
     @property
@@ -831,7 +833,7 @@ class CommitGraph(object):
             # initialise the parents for this commit_i
             reachable_interesting_parents[commit_i] = set()
             # iterate through to_visit list, i.e. go searching in the graph
-            for commit_j in to_visit:
+            for commit_j, firstParent in to_visit:
                 # we have already been here
                 if commit_j in seen:
                     continue
@@ -839,7 +841,7 @@ class CommitGraph(object):
                     seen.add(commit_j)
                     if commit_j in interesting:
                         # is interesting, add and stop
-                        reachable_interesting_parents[commit_i].add(commit_j)
+                        reachable_interesting_parents[commit_i].add([(commit_j, firstParent)])
                     else:
                         # is not interesting, keep searching
                         to_visit.extend(self.parents[commit_j])
@@ -926,7 +928,7 @@ class CommitGraph(object):
         else:
             debug('generate graph in reverse chronological order')
             for child, self.parents in self.parents.items():
-                for p in self.parents:
+                for p, fp in self.parents:
                     dot_file_lines.append('\t"%(source)s" -> "%(target)s";' % {'source':child, 'target':p})
 
         dot_file_lines.append('}')
