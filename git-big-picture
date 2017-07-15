@@ -31,6 +31,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+from itertools import count, izip_longest
 
 __version__ = '1.0.0-dev'
 __docformat__ = "restructuredtext"
@@ -656,9 +657,9 @@ class Git(object):
             sha_ones = [e.group(0) for e in re.finditer(sha1_pattern, line)]
             count = len(sha_ones)
             if count > 1:
-                parents[sha_ones[0]] = set([(sha_ones[1], True)])     # mark first parent
-                if count > 2:
-                    parents[sha_ones[0]] |= set((sha, False) for sha in sha_ones[2:])
+                # mark first parent with True, others False
+                parents[sha_ones[0]] = set(
+                    izip_longest(sha_ones[1:], (True,), fillvalue=False))
             elif count == 1:
                 parents[sha_ones[0]] = set()
         return parents
@@ -745,7 +746,7 @@ class CommitGraph(object):
         for sha_one, pars in self.parents.items():
             for p, fp in pars:
                 for c in self.children[p]:
-                    assert((p, fp) in self.parents[c])
+                    assert(p in (p for (p, fp) in self.parents[c]))
         for sha_one, chs in self.children.items():
             for c in chs:
                 for p, fp in self.parents[c]:
@@ -833,7 +834,7 @@ class CommitGraph(object):
             # initialise the parents for this commit_i
             reachable_interesting_parents[commit_i] = set()
             # iterate through to_visit list, i.e. go searching in the graph
-            for commit_j, firstParent in to_visit:
+            for commit_j, fp in to_visit:
                 # we have already been here
                 if commit_j in seen:
                     continue
@@ -841,7 +842,7 @@ class CommitGraph(object):
                     seen.add(commit_j)
                     if commit_j in interesting:
                         # is interesting, add and stop
-                        reachable_interesting_parents[commit_i].add([(commit_j, firstParent)])
+                        reachable_interesting_parents[commit_i].add((commit_j, fp))
                     else:
                         # is not interesting, keep searching
                         to_visit.extend(self.parents[commit_j])
@@ -849,6 +850,27 @@ class CommitGraph(object):
         return CommitGraph(reachable_interesting_parents,
                 copy.deepcopy(self.branches),
                 copy.deepcopy(self.tags))
+
+    def _first_parents_gen(self, sha_one):
+        """ Generator object to walk the first parent ancestry chain in
+            parents_map to a given sha1 key. The loop terminates when
+            no futher first parent is found.
+               [<1st_parent>, <1st_parent2>, ..., <1st_parentN>]
+        """
+        fp = sha_one
+        while True:
+            fp = next((p for p, is_fp in self.parents[fp] if is_fp), None)
+            if fp is None:
+                break
+            yield fp
+
+    def _other_parents_gen(self, sha_one):
+        """ Generator object to retrieve all but the first parent to a given sha1 key.
+               [<2nd_parent>, <3rd_parent2>, ..., <Nth_parent>]
+        """
+        for p, is_fp in self.parents[sha_one]:
+            if not is_fp:
+                yield p
 
     def _minimal_sha_one_digits(self):
         """ Calculate the minimal number of sha1 digits required to represent
@@ -905,7 +927,39 @@ class CommitGraph(object):
                 color = "/pastel13/%d" % case
                 yield (k, labels, color)
 
-        dot_file_lines = ['digraph {']
+        def draw_parent_history(sha_one, additional=None):
+            """ Draws nodes respecting their first parent history, starting at sha1.
+                Direction is either inverse chronological or chronological.
+                Returns a list representing the path.
+            """
+            dot_line = ['\t"']
+            if chronological:
+                for child in reversed(list(self._first_parents_gen(sha_one))):
+                    dot_line.extend((child, '" -> "'))
+                dot_line.append(sha_one)
+                if additional is not None:
+                    dot_line.extend(('" -> "', additional))
+            else:
+                if additional is not None:
+                    dot_line.extend((additional, '" -> "'))
+                dot_line.append(sha_one)
+                for parent in self._first_parents_gen(sha_one):
+                    dot_line.extend(('" -> "', parent))
+            dot_line.append('";')
+            return dot_line
+
+        dot_file_lines = ['strict digraph {']
+
+        # generate parent history graphs
+        node_group = (i for i in count(1))
+        for sha_one in self.branches:
+            dot_file_lines.append('\tnode[group="{0}"]'.format(next(node_group)))
+            dot_file_lines.append(''.join(draw_parent_history(sha_one)))
+        for merge in self.merges:
+            for sha_one in self._other_parents_gen(merge):
+                dot_file_lines.append('\tnode[group="{0}"]'.format(next(node_group)))
+                dot_file_lines.append(''.join(draw_parent_history(sha_one, merge)))
+
         for sha_one, labels, color in label_gen():
             dot_file_lines.append('\t"%(ref)s"[label="%(label)s", color="%(color)s", style=filled];' % {
                 'ref':sha_one,
@@ -920,16 +974,16 @@ class CommitGraph(object):
                     'ref':sha_one,
                     'label':format_sha_one(sha_one)})
 
-        if (chronological):
-            debug('generate graph in chronological order')
-            for parent, self.children in self.children.items():
-                for c in self.children:
-                    dot_file_lines.append('\t"%(source)s" -> "%(target)s";' % {'source':parent, 'target':c})
-        else:
-            debug('generate graph in reverse chronological order')
-            for child, self.parents in self.parents.items():
-                for p, fp in self.parents:
-                    dot_file_lines.append('\t"%(source)s" -> "%(target)s";' % {'source':child, 'target':p})
+#         if chronological:
+#             debug('generate graph in chronological order')
+#             for parent, self.children in self.children.items():
+#                 for c in self.children:
+#                     dot_file_lines.append('\t"%(source)s" -> "%(target)s";' % {'source':parent, 'target':c})
+#         else:
+#             debug('generate graph in reverse chronological order')
+#             for child, self.parents in self.parents.items():
+#                 for p, fp in self.parents:
+#                     dot_file_lines.append('\t"%(source)s" -> "%(target)s";' % {'source':child, 'target':p})
 
         dot_file_lines.append('}')
         return dot_file_lines
