@@ -338,6 +338,63 @@ class TestGitTools(ut.TestCase):
         print_dict(graph.parents)
         self.assertEqual(expected_reduced_parents, filterd_graph.parents)
 
+    def test_expose_first_parent_bug(self):
+        """ Test for a peculiar bug that was introduced with the first parent feature.
+
+        Before:
+
+               --------------------M master
+              /                   /|
+             A---B---C-feature1--' |
+              \     /              /
+               ----D---E-feature2-'
+               \      /
+                -----F feature3
+
+        After:
+
+               ----------master
+              /           /|
+             A---feature1' |
+              \            /
+               -------feature2
+               \         /
+                ----feature3
+
+        """
+        a = empty_commit('A')
+        dispatch('git checkout -b feature2 %s' % a)
+        d = empty_commit('D')
+        dispatch('git checkout -b feature1 %s' % a)
+        b = empty_commit('B')
+        dispatch('git merge feature2')
+        c = get_head_sha()
+        dispatch('git checkout -b feature3 %s' % a)
+        f = empty_commit('F')
+        dispatch('git checkout feature2')
+        dispatch('git merge feature3')
+        e = get_head_sha()
+        dispatch('git checkout master')
+        dispatch('git merge --no-ff feature1 feature2')
+        m = get_head_sha()
+        graph = self.graph
+        filterd_graph = graph.filter()
+        expected_reduced_parents = {
+            a: set(),
+            m: set(((a, True),(c, False),(e, False))),
+            c: set(((a, True),)),
+            e: set(((a, True),(f, False),)),
+            f: set(((a, True),)),
+        }
+        print('graph.parents:')
+        print_dict(graph.parents)
+        print('filterd_graph.parents:')
+        print_dict(filterd_graph.parents)
+        print('expected_reduced_parents:')
+        print_dict(expected_reduced_parents)
+
+        self.assertEqual(expected_reduced_parents, filterd_graph.parents)
+
     def more_realistic(self):
         """ Test a slightly larger DAG
 
