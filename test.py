@@ -156,9 +156,9 @@ class TestGitTools(ut.TestCase):
 
         expected_parents = {
             a: set(),
-            b: set((a,)),
-            c: set((a,)),
-            d: set((c, b)),
+            b: set(((a, True),)),
+            c: set(((a, True),)),
+            d: set(((c, True), (b, False),)),
         }
         self.assertEqual(gbp.Git(self.testing_dir).get_parent_map(),
                 expected_parents)
@@ -181,7 +181,7 @@ class TestGitTools(ut.TestCase):
         filterd_graph = graph.filter()
         expected_reduced_parents = {
             a: set(),
-            c: set((a,)),
+            c: set(((a, True),)),
         }
         self.assertEqual(expected_reduced_parents, filterd_graph.parents)
 
@@ -205,20 +205,20 @@ class TestGitTools(ut.TestCase):
         filterd_graph = graph.filter()
         expected_reduced_parents = {
             a: set(),
-            b: set((a,)),
-            f: set((b,)),
+            b: set(((a, True),)),
+            f: set(((b, True),)),
         }
         self.assertEqual(expected_reduced_parents, filterd_graph.parents)
         filterd_graph = graph.filter(roots=False)
         expected_reduced_parents = {
             b: set(),
-            f: set((b,)),
+            f: set(((b, True),)),
         }
         self.assertEqual(expected_reduced_parents, filterd_graph.parents)
         filterd_graph = graph.filter(tags=False)
         expected_reduced_parents = {
             a: set(),
-            f: set((a,)),
+            f: set(((a, True),)),
         }
         self.assertEqual(expected_reduced_parents, filterd_graph.parents)
 
@@ -257,8 +257,8 @@ class TestGitTools(ut.TestCase):
            0.1         0.2    master
             |           |       |
             A---B---C---D---E---F
-                     \     /
-                      --G--
+                     \         /
+                      ----G----
 
            0.1 0.2 master
             |   |   |
@@ -285,9 +285,9 @@ class TestGitTools(ut.TestCase):
         graph = self.graph
         filterd_graph = graph.filter()
         expected_reduced_parents = {
-            d: set((a,)),
+            d: set(((a, True),)),
             a: set(),
-            f: set((a, d,)),
+            f: set(((a, False), (d, True),)),
         }
         self.assertEqual(expected_reduced_parents, filterd_graph.parents)
 
@@ -324,10 +324,10 @@ class TestGitTools(ut.TestCase):
         graph = self.graph
         filterd_graph = graph.filter()
         expected_reduced_parents = {
-            b: set((a,)),
+            b: set(((a, True),)),
             a: set(),
-            f: set((p, b,)),
-            p: set((b,)),
+            f: set(((p, False), (b, True),)),
+            p: set(((b, True),)),
         }
         print "a", a
         print "b", b
