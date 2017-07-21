@@ -824,28 +824,50 @@ class CommitGraph(object):
         reachable_interesting_parents = dict()
         # for everything that we are interested in
         for commit_i in interesting:
-            # Handle tags pointing to non-commits
-            if commit_i in self.parents:
-                to_visit = list(self.parents[commit_i])
-            else:
-                to_visit = list()
-            # create the set of seen commits
-            seen = set()
             # initialise the parents for this commit_i
             reachable_interesting_parents[commit_i] = set()
-            # iterate through to_visit list, i.e. go searching in the graph
-            for commit_j, fp in to_visit:
+            # Handle tags pointing to non-commits
+            if commit_i not in self.parents:
+                continue
+            # create the set of seen commits
+            seen = set()
+            to_visit = []
+
+            # first run: follow first parents while remembering others
+            commit_j = commit_i
+            while True:
+                fp = None
+                for p, is_fp in self.parents[commit_j]:
+                    if is_fp:
+                        assert(fp is None)
+                        fp = p
+                    else:
+                        to_visit.append(p)
+                if fp is None or fp in seen:
+                    break
+                # remeber commit for search in second loop later
+                seen.add(fp)
+                if fp in interesting:
+                    # is interesting, add as first parent and stop
+                    reachable_interesting_parents[commit_i].add((fp, True))
+                    break
+                else:
+                    # prepare commit_j for next iteration
+                    commit_j = fp
+
+            # second run: follow remaining parents in to_visit
+            for commit_j in to_visit:
                 # we have already been here
                 if commit_j in seen:
                     continue
                 else:
                     seen.add(commit_j)
                     if commit_j in interesting:
-                        # is interesting, add and stop
-                        reachable_interesting_parents[commit_i].add((commit_j, fp))
+                        # is interesting, add as none-first parent
+                        reachable_interesting_parents[commit_i].add((commit_j, False))
                     else:
                         # is not interesting, keep searching
-                        to_visit.extend(self.parents[commit_j])
+                        to_visit.extend(set(p for p, is_fp in self.parents[commit_j]))
 
         return CommitGraph(reachable_interesting_parents,
                 copy.deepcopy(self.branches),
