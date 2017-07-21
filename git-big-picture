@@ -852,7 +852,12 @@ class CommitGraph(object):
         """ Calculate the minimal number of sha1 digits required to represent
         all commits unambiguously. """
         key_count = len(self.parents)
-        for digit_count in xrange(7, 40):
+        start_width = 7
+        if key_count < 100000: start_width = 6
+        if key_count < 10000:  start_width = 5
+        if key_count < 1000:   start_width = 4
+        if key_count < 100:    start_width = 3
+        for digit_count in xrange(start_width, 40):
             if len(set(e[0:digit_count] for e in self.parents.keys())) == key_count:
                 return digit_count
         return 40
