@@ -81,11 +81,14 @@ FILTER_DEFAULTS = {
 
 # graph settings
 CHRONOLIGICAL = 'chronological'
+FIRST_PARENT  = 'first_parent'
 GRAPH_SETTINGS = [
         CHRONOLIGICAL,
+        FIRST_PARENT,
         ]
 GRAPH_DEFAULTS = {
         CHRONOLIGICAL:False,
+        FIRST_PARENT:False,
         }
 
 EXIT_CODES = {"too_many_args":              1,
@@ -204,6 +207,12 @@ def create_parser():
     graph_group.add_option('-C', '--no-chronological',
             action='store_true', dest='no_chronological',
             help='generate graph in reverse chronological order')
+    graph_group.add_option('--first-parent',
+            action='store_true', dest='first_parent',
+            help='draw graph ordered according to first-parent history')
+    graph_group.add_option('--no-first-parent',
+            action='store_true', dest='no_first_parent',
+            help='draw graph without considering first-parent history')
 
     parser.add_option_group(graph_group)
 
@@ -908,17 +917,17 @@ class CommitGraph(object):
                 return digit_count
         return 40
 
-    def _generate_dot_file(self, sha_ones_on_labels, sha_one_digits=None, chronological=False):
+    def _generate_dot_file(self, opts, sha_ones_on_labels, sha_one_digits=None):
         """ Generate graphviz input.
 
         Parameters
         ----------
+        opts : optparse.Values
+            Values instance with all succesfully parsed command line options 
         sha_ones_on_labels : boolean
             if True show sha1 (or minimal) on labels in addition to ref names
         sha_one_digits : int
             number of digits to use for showing sha1
-        chronological : boolean
-            if True generate graph in chronological order (from initial to latest commit)
 
         Returns
         -------
@@ -955,7 +964,7 @@ class CommitGraph(object):
                 Returns a list representing the path.
             """
             dot_line = ['\t"']
-            if chronological:
+            if opts.chronological:
                 for child in reversed(list(self._first_parents_gen(sha_one))):
                     dot_line.extend((child, '" -> "'))
                 dot_line.append(sha_one)
@@ -970,18 +979,10 @@ class CommitGraph(object):
             dot_line.append('";')
             return dot_line
 
-        dot_file_lines = ['strict digraph {']
-
-        # generate parent history graphs
-        node_group = (i for i in count(1))
-        for sha_one in self.branches:
-            dot_file_lines.append('\tnode[group="{0}"]'.format(next(node_group)))
-            dot_file_lines.append(''.join(draw_parent_history(sha_one)))
-        for merge in self.merges:
-            for sha_one in self._other_parents_gen(merge):
-                dot_file_lines.append('\tnode[group="{0}"]'.format(next(node_group)))
-                dot_file_lines.append(''.join(draw_parent_history(sha_one, merge)))
-
+        if opts.first_parent:
+            dot_file_lines = ['strict digraph {']
+        else:
+            dot_file_lines = ['digraph {']
         for sha_one, labels, color in label_gen():
             dot_file_lines.append('\t"%(ref)s"[label="%(label)s", color="%(color)s", style=filled];' % {
                 'ref':sha_one,
@@ -995,18 +996,25 @@ class CommitGraph(object):
                 dot_file_lines.append('\t"%(ref)s"[label="%(label)s"];' % {
                     'ref':sha_one,
                     'label':format_sha_one(sha_one)})
-
-#         if chronological:
-#             debug('generate graph in chronological order')
-#             for parent, self.children in self.children.items():
-#                 for c in self.children:
-#                     dot_file_lines.append('\t"%(source)s" -> "%(target)s";' % {'source':parent, 'target':c})
-#         else:
-#             debug('generate graph in reverse chronological order')
-#             for child, self.parents in self.parents.items():
-#                 for p, fp in self.parents:
-#                     dot_file_lines.append('\t"%(source)s" -> "%(target)s";' % {'source':child, 'target':p})
-
+        if opts.first_parent:
+            # generate parent history graphs
+            node_group = (i for i in count(1))
+            for sha_one in self.branches:
+                dot_file_lines.append('\tnode[group="{0}"]'.format(next(node_group)))
+                dot_file_lines.append(''.join(draw_parent_history(sha_one)))
+            for merge in self.merges:
+                for sha_one in self._other_parents_gen(merge):
+                    dot_file_lines.append('\tnode[group="{0}"]'.format(next(node_group)))
+                    dot_file_lines.append(''.join(draw_parent_history(sha_one, merge)))
+        else:
+            if opts.chronological:
+                for parent, self.children in self.children.items():
+                    for c in self.children:
+                        dot_file_lines.append('\t"%(source)s" -> "%(target)s";' % {'source':parent, 'target':c})
+            else:
+                for child, self.parents in self.parents.items():
+                    for p, fp in self.parents:
+                        dot_file_lines.append('\t"%(source)s" -> "%(target)s";' % {'source':child, 'target':p})
         dot_file_lines.append('}')
         return dot_file_lines
 
@@ -1034,9 +1042,9 @@ def main(opts, args):
         graph = graph.filter(**filter_settings)
         sha_one_digits = graph._minimal_sha_one_digits()
 
-    dot_file_lines = graph._generate_dot_file(sha_ones_on_labels=opts.all_commits,
-                                              sha_one_digits=sha_one_digits,
-                                              chronological=opts.chronological)
+    dot_file_lines = graph._generate_dot_file(opts=opts,
+                                              sha_ones_on_labels=opts.all_commits,
+                                              sha_one_digits=sha_one_digits)
 
     if (output_settings[GRAPHVIZ] and output_settings[PROCESSED]):
         barf("Options '-g | --graphviz' and '-p | --processed' " +
