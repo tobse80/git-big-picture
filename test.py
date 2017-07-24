@@ -156,9 +156,9 @@ class TestGitTools(ut.TestCase):
 
         expected_parents = {
             a: set(),
-            b: set((a,)),
-            c: set((a,)),
-            d: set((c, b)),
+            b: set(((a, True),)),
+            c: set(((a, True),)),
+            d: set(((c, True), (b, False),)),
         }
         self.assertEqual(gbp.Git(self.testing_dir).get_parent_map(),
                 expected_parents)
@@ -181,7 +181,7 @@ class TestGitTools(ut.TestCase):
         filterd_graph = graph.filter()
         expected_reduced_parents = {
             a: set(),
-            c: set((a,)),
+            c: set(((a, True),)),
         }
         self.assertEqual(expected_reduced_parents, filterd_graph.parents)
 
@@ -205,20 +205,20 @@ class TestGitTools(ut.TestCase):
         filterd_graph = graph.filter()
         expected_reduced_parents = {
             a: set(),
-            b: set((a,)),
-            f: set((b,)),
+            b: set(((a, True),)),
+            f: set(((b, True),)),
         }
         self.assertEqual(expected_reduced_parents, filterd_graph.parents)
         filterd_graph = graph.filter(roots=False)
         expected_reduced_parents = {
             b: set(),
-            f: set((b,)),
+            f: set(((b, True),)),
         }
         self.assertEqual(expected_reduced_parents, filterd_graph.parents)
         filterd_graph = graph.filter(tags=False)
         expected_reduced_parents = {
             a: set(),
-            f: set((a,)),
+            f: set(((a, True),)),
         }
         self.assertEqual(expected_reduced_parents, filterd_graph.parents)
 
@@ -257,8 +257,8 @@ class TestGitTools(ut.TestCase):
            0.1         0.2    master
             |           |       |
             A---B---C---D---E---F
-                     \     /
-                      --G--
+                     \         /
+                      ----G----
 
            0.1 0.2 master
             |   |   |
@@ -285,9 +285,9 @@ class TestGitTools(ut.TestCase):
         graph = self.graph
         filterd_graph = graph.filter()
         expected_reduced_parents = {
-            d: set((a,)),
+            d: set(((a, True),)),
             a: set(),
-            f: set((a, d,)),
+            f: set(((a, False), (d, True),)),
         }
         self.assertEqual(expected_reduced_parents, filterd_graph.parents)
 
@@ -324,10 +324,10 @@ class TestGitTools(ut.TestCase):
         graph = self.graph
         filterd_graph = graph.filter()
         expected_reduced_parents = {
-            b: set((a,)),
+            b: set(((a, True),)),
             a: set(),
-            f: set((p, b,)),
-            p: set((b,)),
+            f: set(((p, False), (b, True),)),
+            p: set(((b, True),)),
         }
         print "a", a
         print "b", b
@@ -336,6 +336,63 @@ class TestGitTools(ut.TestCase):
         print dispatch("git log --oneline %s..%s" % (f, p))
         print_dict(expected_reduced_parents)
         print_dict(graph.parents)
+        self.assertEqual(expected_reduced_parents, filterd_graph.parents)
+
+    def test_expose_first_parent_bug(self):
+        """ Test for a peculiar bug that was introduced with the first parent feature.
+
+        Before:
+
+               --------------------M master
+              /                   /|
+             A---B---C-feature1--' |
+              \     /              /
+               ----D---E-feature2-'
+               \      /
+                -----F feature3
+
+        After:
+
+               ----------master
+              /           /|
+             A---feature1' |
+              \            /
+               -------feature2
+               \         /
+                ----feature3
+
+        """
+        a = empty_commit('A')
+        dispatch('git checkout -b feature2 %s' % a)
+        d = empty_commit('D')
+        dispatch('git checkout -b feature1 %s' % a)
+        b = empty_commit('B')
+        dispatch('git merge feature2')
+        c = get_head_sha()
+        dispatch('git checkout -b feature3 %s' % a)
+        f = empty_commit('F')
+        dispatch('git checkout feature2')
+        dispatch('git merge feature3')
+        e = get_head_sha()
+        dispatch('git checkout master')
+        dispatch('git merge --no-ff feature1 feature2')
+        m = get_head_sha()
+        graph = self.graph
+        filterd_graph = graph.filter()
+        expected_reduced_parents = {
+            a: set(),
+            m: set(((a, True),(c, False),(e, False))),
+            c: set(((a, True),)),
+            e: set(((a, True),(f, False),)),
+            f: set(((a, True),)),
+        }
+        print('graph.parents:')
+        print_dict(graph.parents)
+        print('filterd_graph.parents:')
+        print_dict(filterd_graph.parents)
+        print('expected_reduced_parents:')
+        print_dict(expected_reduced_parents)
+
         self.assertEqual(expected_reduced_parents, filterd_graph.parents)
 
     def more_realistic(self):
