@@ -994,7 +994,7 @@ class CommitGraph(object):
             dot_file_lines = ['digraph {']
         # draw label decorations
         for sha_one, labels, color in label_gen():
-            dot_file_lines.append('\t"%(ref)s"[label="%(label)s", color="%(color)s", style=filled];' % {
+            dot_file_lines.append('\t"%(ref)s"[label="%(label)s", color="%(color)s", style="rounded,filled", shape=box];' % {
                 'ref':sha_one,
                 'label':'\\n'.join(labels \
                     + (sha_ones_on_labels and [format_sha_one(sha_one),] or list())),
@@ -1003,9 +1003,18 @@ class CommitGraph(object):
             dot_file_lines.append('\t"%(ref)s"[label="..."];' % {'ref':sha_one})
         if (sha_one_digits is not None) and (sha_one_digits != 40):
             for sha_one in (e for e in self.parents.keys() if not (self._has_label(e) or e in self.dotdot)):
-                dot_file_lines.append('\t"%(ref)s"[label="%(label)s"];' % {
-                    'ref':sha_one,
-                    'label':format_sha_one(sha_one)})
+                if sha_one in self.merges:
+                    dot_file_lines.append('\t"%(ref)s"[label="%(label)s", color="/pastel14/4", style=filled];' % {
+                        'ref':sha_one,
+                        'label':format_sha_one(sha_one)})
+                elif sha_one in self.bifurcations:
+                    dot_file_lines.append('\t"%(ref)s"[label="%(label)s", color="/pastel14/3", style=filled];' % {
+                        'ref':sha_one,
+                        'label':format_sha_one(sha_one)})
+                else:
+                    dot_file_lines.append('\t"%(ref)s"[label="%(label)s"];' % {
+                        'ref':sha_one,
+                        'label':format_sha_one(sha_one)})
         if not opts.first_parent:
             # draw regular graph
             if opts.chronological:
