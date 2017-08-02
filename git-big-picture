@@ -980,9 +980,19 @@ class CommitGraph(object):
             return dot_line
 
         if opts.first_parent:
+            # generate parent history graphs (must occur before label decorations)
             dot_file_lines = ['strict digraph {']
+            node_group = (i for i in count(1))
+            for sha_one in self.branches:
+                dot_file_lines.append('\tnode[group="{0}"]'.format(next(node_group)))
+                dot_file_lines.append(''.join(draw_parent_history(sha_one)))
+            for merge in self.merges:
+                for sha_one in self._other_parents_gen(merge):
+                    dot_file_lines.append('\tnode[group="{0}"]'.format(next(node_group)))
+                    dot_file_lines.append(''.join(draw_parent_history(sha_one, merge)))
         else:
             dot_file_lines = ['digraph {']
+        # draw label decorations
         for sha_one, labels, color in label_gen():
             dot_file_lines.append('\t"%(ref)s"[label="%(label)s", color="%(color)s", style=filled];' % {
                 'ref':sha_one,
@@ -996,17 +1006,8 @@ class CommitGraph(object):
                 dot_file_lines.append('\t"%(ref)s"[label="%(label)s"];' % {
                     'ref':sha_one,
                     'label':format_sha_one(sha_one)})
-        if opts.first_parent:
-            # generate parent history graphs
-            node_group = (i for i in count(1))
-            for sha_one in self.branches:
-                dot_file_lines.append('\tnode[group="{0}"]'.format(next(node_group)))
-                dot_file_lines.append(''.join(draw_parent_history(sha_one)))
-            for merge in self.merges:
-                for sha_one in self._other_parents_gen(merge):
-                    dot_file_lines.append('\tnode[group="{0}"]'.format(next(node_group)))
-                    dot_file_lines.append(''.join(draw_parent_history(sha_one, merge)))
-        else:
+        if not opts.first_parent:
+            # draw regular graph
             if opts.chronological:
                 for parent, self.children in self.children.items():
                     for c in self.children:
